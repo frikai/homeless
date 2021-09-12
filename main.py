@@ -1,26 +1,24 @@
 import datetime
-import time
-from msedge.selenium_tools import EdgeOptions
+
 from selenium import webdriver
 from selenium.common.exceptions import NoSuchElementException
-from selenium.webdriver.common.keys import Keys
-from selenium.webdriver import Edge
 from selenium.webdriver.edge.webdriver import WebDriver
 from selenium.webdriver.support.select import Select
 
 
 class Ad:
-    def __init__(self, id: int, posted: str, url: str):
+    def __init__(self, id: int, posted: str, url: str, area: str):
         self.id: int = id
         self.posted: str = posted
         self.url: str = url
         self.time: datetime = datetime.datetime.now().replace(microsecond=0)
+        self.area: str = area
 
     def __str__(self):
         return 'New Ad: posted on %s, discovered on %s \n%s' % (self.posted, self.time, self.url)
 
 
-def get_new(driver: WebDriver, seen: list, new: list):
+def get_new(driver: WebDriver, seen: list, new: list, area: str):
     while True:
         try:
             idgen = (x.get_attribute("id") for x in driver.find_elements_by_xpath("//li[@class='search-result-entry "
@@ -31,7 +29,7 @@ def get_new(driver: WebDriver, seen: list, new: list):
                                                                                      "search-mate-entry']/a[2]"))
             adgen = zip(idgen, dategen, urlgen)
 
-            for ad in (Ad(*adtuple) for adtuple in adgen):
+            for ad in (Ad(*adtuple, area) for adtuple in adgen):
                 if ad not in seen:
                     seen.append(ad)
                     new.append(ad)
@@ -56,20 +54,17 @@ def search(driver: WebDriver, area: str):
     select.select_by_visible_text("1'000")
     select = Select(driver.find_element_by_id("selector-state"))
     select.select_by_visible_text(area)
-    driver.find_element_by_id("selector-state").submit()
+    (driver.find_element_by_xpath("//div[@class='button-wrapper button-etapper']//input")).click()
 
 
 def main():
     seen: list = []
     new: list = []
-    options = EdgeOptions()
-    options.
-    options.add_argument(r'--user-data-dir=C:\Users\julix\AppData\Local\Microsoft\Edge\User Data\\')
-    driver = Edge(options)
-    area_list = ["Zürich (Stadt)", "Zürich  (Oerlikon, Seebach, Affoltern)"]
+    driver = webdriver.Edge()
+    area_list = ["Zürich (Stadt)", "Zürich (Oerlikon, Seebach, Affoltern)"]
     for area in area_list:
         search(driver, area)
-        get_new(driver, seen, new)
+        get_new(driver, seen, new, area)
     driver.close()
 
 

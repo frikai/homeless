@@ -1,9 +1,16 @@
 import datetime
+import os
+import smtplib
+import ssl
+from typing import List
 
+from dotenv import load_dotenv
 from selenium import webdriver
 from selenium.common.exceptions import NoSuchElementException
 from selenium.webdriver.edge.webdriver import WebDriver
 from selenium.webdriver.support.select import Select
+
+load_dotenv()
 
 
 class Ad:
@@ -14,11 +21,29 @@ class Ad:
         self.time: datetime = datetime.datetime.now().replace(microsecond=0)
         self.area: str = area
 
-    def __str__(self):
-        return 'New Ad: posted on %s, discovered on %s \n%s' % (self.posted, self.time, self.url)
+    def __str__(self) -> str:
+        return 'New ad: posted on %s, discovered on %s \n%s' % (self.posted, self.time, self.url)
 
 
-def get_new(driver: WebDriver, seen: list, new: list, area: str):
+class Sender:
+    def __init__(self):
+        self.port = 465
+        self.from_address = os.getenv("sender_email")
+        self.to_address = os.getenv("receiver_email")
+        self.context = ssl.create_default_context()
+
+    def send_update(self, ad_list: List[Ad]):
+        l: int = len(ad_list)
+        msg = f"Subject: Found {l} new {'ad' if l == 1 else 'ads'} wgzimmer.ch\n"
+        for ad in ad_list:
+            msg += str(ad) + "\n\n"
+
+        with smtplib.SMTP_SSL("smtp.gmail.com", self.port, context=self.context) as server:
+            server.login(self.from_address, os.getenv("password"))
+            server.sendmail(self.from_address, self.to_address, msg)
+
+
+def get_new(driver: WebDriver, seen: List[Ad], new: List[Ad], area: str):
     while True:
         try:
             idgen = (x.get_attribute("id") for x in driver.find_elements_by_xpath("//li[@class='search-result-entry "
@@ -49,25 +74,26 @@ def search(driver: WebDriver, area: str):
     except NoSuchElementException:
         driver.get("https://www.wgzimmer.ch/de/wgzimmer/search/mate.html?")
     select = Select(driver.find_element_by_name("priceMin"))
-    select.select_by_visible_text("400")
+    select.select_by_visible_text(os.getenv("price_min"))
     select = Select(driver.find_element_by_name("priceMax"))
-    select.select_by_visible_text("1'000")
+    select.select_by_visible_text(os.getenv("price_max"))
     select = Select(driver.find_element_by_id("selector-state"))
     select.select_by_visible_text(area)
     (driver.find_element_by_xpath("//div[@class='button-wrapper button-etapper']//input")).click()
 
 
 def main():
-    seen: list = []
-    new: list = []
+    seen: List[Ad] = []
+    new: List[Ad] = []
     driver = webdriver.Edge()
-    area_list = ["Zürich (Stadt)", "Zürich (Oerlikon, Seebach, Affoltern)"]
+    area_list = [os.getenv("area_1"), os.getenv("area_2")]
+    sender = Sender()
     for area in area_list:
         search(driver, area)
         get_new(driver, seen, new, area)
+    sender.send_update(new)
     driver.close()
 
 
 if __name__ == '__main__':
-    main();
-
+    main()

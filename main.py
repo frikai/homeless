@@ -1,7 +1,9 @@
 import datetime
+import json
 import os
 import smtplib
 import ssl
+import time
 from typing import List
 
 from dotenv import load_dotenv
@@ -14,15 +16,35 @@ load_dotenv()
 
 
 class Ad:
-    def __init__(self, id: int, posted: str, url: str, area: str):
-        self.id: int = id
+    def __init__(self, *args):
+        self.time: datetime = datetime.datetime.now().replace(microsecond=0)
+
+        if len(args) > 1:
+            ad_id, posted, url, area = args
+        else:
+            dict_ad = args[0]
+            ad_id = dict_ad["id"]
+            posted = dict_ad["posted"]
+            url = dict_ad["url"]
+            area = dict_ad["area"]
+            self.time = dict_ad["time"]
+
+        self.id: int = ad_id
         self.posted: str = posted
         self.url: str = url
-        self.time: datetime = datetime.datetime.now().replace(microsecond=0)
         self.area: str = area
 
     def __str__(self) -> str:
-        return 'New ad: posted on %s, discovered on %s \n%s' % (self.posted, self.time, self.url)
+        return ('New room in %s, posted on %s, discovered on %s \n%s'
+                % (self.area, self.posted, self.time, self.url)).replace("ü", "ue")
+
+    def __eq__(self, other):
+        if isinstance(other, Ad):
+            return self.id == other.id
+        return False
+
+    def to_dict(self) -> dict:
+        return {"id": self.id, "posted": self.posted, "url": self.url, "area": self.area, "time": str(self.time)}
 
 
 class Sender:
@@ -82,18 +104,65 @@ def search(driver: WebDriver, area: str):
     (driver.find_element_by_xpath("//div[@class='button-wrapper button-etapper']//input")).click()
 
 
+def write_ad_list_to_json(new: List[Ad]):
+    data = {"ads": [ad.to_dict() for ad in new]}
+    with open('seen_ads.txt', 'w') as outfile:
+        json.dump(data, outfile)
+
+
+def load_json_to_ad_list() -> List[Ad]:
+    try:
+        print("loading json data of previous scans")
+        with open('seen_ads.txt') as json_file:
+            data: dict = json.load(json_file)
+    except FileNotFoundError:
+        print("Cannot find any previous records, looks like this is the first time you're running this.\n"
+              "If that is not the case, the file I was storing seen ads in somehow got lost or moved :(\n"
+              "Anyway, I'm making a new one ¯\\_(ツ)_/¯\n")
+        print("creating \"seen_ads.txt\"")
+        create_file()
+
+        with open('seen_ads.txt') as json_file:
+            data: dict = json.load(json_file)
+
+    return [Ad(ad) for ad in data["ads"]]
+
+
+def create_file():
+    f = open("seen_ads.txt", "x")
+    f.close()
+    data = {"ads": []}
+    with open('seen_ads.txt', 'w') as outfile:
+        json.dump(data, outfile)
+
+
 def main():
-    seen: List[Ad] = []
-    new: List[Ad] = []
-    driver = webdriver.Edge()
+    seen: List[Ad] = load_json_to_ad_list()
     area_list = [os.getenv("area_1"), os.getenv("area_2")]
     sender = Sender()
-    for area in area_list:
-        search(driver, area)
-        get_new(driver, seen, new, area)
-    sender.send_update(new)
-    driver.close()
+    while True:
+        print("starting a scan")
+        driver = webdriver.Edge()
+        new: List[Ad] = []
+        for area in area_list:
+            search(driver, area)
+            get_new(driver, seen, new, area)
+        if len(new) > 0:
+            print(f"found {len(new)} new ads, sending via mail")
+            sender.send_update(new)
+            print("saving...")
+            write_ad_list_to_json(seen)
+        else:
+            print("no new ads detected")
+        print("done")
+        print("-----------------------------------------------------------")
+        driver.close()
+        time.sleep(os.getenv("SEARCH_INTERVAL_SECONDS"))
 
 
 if __name__ == '__main__':
     main()
+
+# TODO: comments
+# TODO: include template .env
+# TODO: headless (switch to chrome driver?)

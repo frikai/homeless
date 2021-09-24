@@ -12,6 +12,8 @@ from selenium.common.exceptions import NoSuchElementException
 from selenium.webdriver.edge.webdriver import WebDriver
 from selenium.webdriver.support.select import Select
 
+from selenium.webdriver.chrome.options import Options
+
 load_dotenv()
 
 
@@ -56,10 +58,9 @@ class Sender:
 
     def send_update(self, ad_list: List[Ad]):
         l: int = len(ad_list)
-        msg = f"Subject: Found {l} new {'ad' if l == 1 else 'ads'} wgzimmer.ch\n"
+        msg = f"Subject: Found {l} new {'ad' if l == 1 else 'ads'}! (wgzimmer.ch)\n\n"
         for ad in ad_list:
             msg += str(ad) + "\n\n"
-
         with smtplib.SMTP_SSL("smtp.gmail.com", self.port, context=self.context) as server:
             server.login(self.from_address, os.getenv("password"))
             server.sendmail(self.from_address, self.to_address, msg)
@@ -100,7 +101,8 @@ def search(driver: WebDriver, area: str):
     select = Select(driver.find_element_by_name("priceMax"))
     select.select_by_visible_text(os.getenv("price_max"))
     select = Select(driver.find_element_by_id("selector-state"))
-    select.select_by_visible_text(area)
+    index: int = 52 if area == "Zurich (Stadt)" else 54
+    select.select_by_index(index)
     (driver.find_element_by_xpath("//div[@class='button-wrapper button-etapper']//input")).click()
 
 
@@ -141,8 +143,14 @@ def main():
     area_list = [os.getenv("area_1"), os.getenv("area_2")]
     sender = Sender()
     while True:
-        print("starting a scan")
-        driver = webdriver.Edge()
+        print(str(datetime.datetime.now().replace(microsecond=0)) + ": starting a scan")
+
+        options = Options()
+        options.add_argument('--headless')
+        options.add_argument('--disable-gpu')  # Last I checked this was necessary.
+        driver = webdriver.Chrome(chrome_options=options)
+
+        # driver = webdriver.Chrome()
         new: List[Ad] = []
         for area in area_list:
             search(driver, area)
@@ -157,7 +165,8 @@ def main():
         print("done")
         print("-----------------------------------------------------------")
         driver.close()
-        time.sleep(os.getenv("SEARCH_INTERVAL_SECONDS"))
+        wait_time: int = int(os.getenv("SEARCH_INTERVAL_SECONDS"))
+        time.sleep(wait_time)
 
 
 if __name__ == '__main__':
